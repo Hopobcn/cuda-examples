@@ -7,7 +7,7 @@ using namespace std;
 
 
 int main() {
-    unsigned N = 1 * 1024 * 1024;
+    unsigned N = 3 * 1024 * 1024;
     using type = float;
 
     try {
@@ -25,7 +25,7 @@ int main() {
         gpu.list_devices();
 
         err = cudaDeviceSynchronize();
-        for (unsigned i = 0; i < N; i++) {
+        for (auto i : cuda::util::lang::range<unsigned>(0, N)) {
             (*a)[i] = 0;
             (*b)[i] = 0;
         }
