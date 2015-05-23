@@ -9,4 +9,5 @@ void run_saxpy(const cuda::vector<float>& x,
                const float* py,
                      float* pz,
                unsigned N,
-               float alpha);
+               float alpha,
+               unsigned repetitions);
