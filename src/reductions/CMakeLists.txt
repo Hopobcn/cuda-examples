@@ -8,11 +8,10 @@ list(APPEND CMAKE_NVCC_FLAGS "-Xcompiler '-march=native' -lineinfo -use_fast_mat
 list(APPEND CMAKE_NVCC_FLAGS "-gencode arch=compute_52,code=sm_52")
 
 
-cuda_add_library(cuda_streaming
-                 saxpy.cu
+cuda_add_library(cuda_reductions
+                 reductions.cu
                  OPTIONS -DUSE_CUDA="__USE_CUDA__"
                  RELEASE -std=c++11 -O3 -Xptxas -v -use_fast_math -DNDEBUG
                  DEBUG -g -DDEBUG -std=c++11)
 
-cuda_add_cublas_to_target(cuda_streaming)
-target_link_libraries(cuda_streaming cuda_util)
+target_link_libraries(cuda_reductions cuda_util)
