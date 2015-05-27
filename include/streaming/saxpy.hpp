@@ -43,3 +43,20 @@ void run_saxpy_cublas(const double* px,
                       unsigned N,
                       const double alpha,
                       unsigned repetitions);
+
+
+
+void run_saxpy_cub(const float* px,
+                   const float* py,
+                   float* pz,
+                   unsigned N,
+                   float alpha,
+                   unsigned repetitions);
+
+
+void run_saxpy_cub(const double* px,
+                   const double* py,
+                   double* pz,
+                   unsigned N,
+                   double alpha,
+                   unsigned repetitions);

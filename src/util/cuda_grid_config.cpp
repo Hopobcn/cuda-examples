@@ -34,7 +34,7 @@ dim3 getGridDimensions(unsigned  sx, unsigned  sy, unsigned  sz,
         else             bx /= 2;
     }
 
-    unsigned grid_size_x = std::min( static_cast<unsigned>(std::ceil(sx/bx)), static_cast<unsigned>(65535)); //prop.maxGridSize[0]));
+    unsigned grid_size_x = std::min( static_cast<unsigned>(std::ceil(sx/bx)), static_cast<unsigned>(prop.maxGridSize[0]));
     unsigned grid_size_y = std::min( static_cast<unsigned>(std::ceil(sy/by)), static_cast<unsigned>(prop.maxGridSize[1]));
     unsigned grid_size_z = std::min( static_cast<unsigned>(std::ceil(sz/bz)), static_cast<unsigned>(prop.maxGridSize[2]));
 

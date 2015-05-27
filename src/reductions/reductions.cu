@@ -112,7 +112,7 @@ __device__
 inline void warpReduceSmem(SharedMemory<ReductionType> warp_smem, const unsigned tid) {
     if (blockDim.x >= 64) warp_smem[tid] += warp_smem[tid + 32];
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 300))
-    T sum = warp_smem[tid];
+    ReductionType sum = warp_smem[tid];
     sum += __shfl_down(sum, 16);
     sum += __shfl_down(sum,  8);
     sum += __shfl_down(sum,  4);

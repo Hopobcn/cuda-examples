@@ -6,6 +6,8 @@
 #include <util/cuda_grid_config.hpp>
 #include <util/cuda_error.hpp>
 #include <cublas_v2.h>
+#include <cub/cub/cub.cuh>
+
 
 using cuda::grid_stride_range;
 using cuda::util::getGridDimensions;
@@ -123,6 +125,62 @@ void saxpy_gpu_cpp_vector_unroll(const cuda::vector<T>& x, const cuda::vector<T>
         }
     }
 }
+
+template <typename T, const unsigned blockDimx, const int unroll>
+__global__
+void saxpy_gpu_cub(const T* x, const T* y, T* z, unsigned N, T alpha) {
+    using BlockLoad  = cub::BlockLoad<const T*, blockDimx, unroll, cub::BLOCK_LOAD_WARP_TRANSPOSE>;
+    using BlockStore = cub::BlockStore<T*, blockDimx, unroll, cub::BLOCK_STORE_WARP_TRANSPOSE>;
+
+    __shared__ union
+    {
+        typename BlockLoad::TempStorage  load_x;
+        typename BlockLoad::TempStorage  load_y;
+        typename BlockStore::TempStorage store;
+    } storage_smem;
+
+    T x_reg[unroll], y_reg[unroll], z_reg[unroll];
+    BlockLoad(storage_smem.load_x).Load(x, x_reg);
+    BlockLoad(storage_smem.load_y).Load(y, y_reg);
+
+    __syncthreads();
+
+    for (int i = 0; i < unroll; i++)
+        z_reg[i] = alpha * x_reg[i] + y_reg[i];
+
+    BlockStore(storage_smem.store).Store(z, z_reg);
+};
+
+/*
+template <typename T, const unsigned blockDimx, const unsigned blockDimy, const int unroll>
+__global__
+void test_cub_2d(const T* x, const T* y, T* z, unsigned N, T alpha) {
+    using BlockLoad  = cub::BlockLoad<const T*, blockDimx, unroll, cub::BLOCK_LOAD_WARP_TRANSPOSE, blockDimy>;
+    using BlockStore = cub::BlockStore<T*, blockDimx, unroll, cub::BLOCK_STORE_WARP_TRANSPOSE, blockDimy>;
+
+    __shared__ union
+    {
+        typename BlockLoad::TempStorage  load_x;
+        typename BlockLoad::TempStorage  load_y;
+        typename BlockStore::TempStorage store;
+    } storage_smem;
+
+    T x_reg[unroll*unroll], y_reg[unroll*unroll], z_reg[unroll*unroll];
+    BlockLoad(storage_smem.load_x).Load(x, x_reg);
+    BlockLoad(storage_smem.load_y).Load(y, y_reg);
+
+    __syncthreads();
+
+    for (int i = 0; i < unroll; i++) {
+        for (int j = 0; j < unroll; j++) {
+            const unsigned index = i * unroll + j;
+            z_reg[index] = alpha * x_reg[index] + y_reg[index];
+        }
+    }
+
+    BlockStore(storage_smem.store).Store(z, z_reg);
+};
+ */
 
 void run_saxpy_c(const float* px,
                  const float* py,
@@ -372,4 +430,107 @@ void run_saxpy_cublas(const double* px,
         assert(status == CUBLAS_STATUS_SUCCESS);
     }
     std::cout << std::endl;
+}
+
+
+void run_saxpy_cub(const float* px,
+                 const float* py,
+                 float* pz,
+                 unsigned N,
+                 float alpha,
+                 unsigned repetitions) {
+    using T = float;
+
+    cuda::error err;
+    unsigned block_size_x = 128;
+    unsigned block_size_y = 1;
+    unsigned block_size_z = 1;
+    dim3 dimGrid = getGridDimensions(N, 1, 1, block_size_x, block_size_y, block_size_z);
+    dim3 dimBlock( block_size_x, block_size_y, block_size_z );
+
+    unsigned block_size2_x = 128;
+    unsigned block_size2_y = 1;
+    unsigned block_size2_z = 1;
+    const unsigned unroll2 = 2;
+    dim3 dimGrid2  = getGridDimensions(N/unroll2, 1, 1, block_size2_x, block_size2_y, block_size2_z);
+    dim3 dimBlock2( block_size2_x, block_size2_y, block_size2_z );
+
+    unsigned block_size4_x = 128;
+    unsigned block_size4_y = 1;
+    unsigned block_size4_z = 1;
+    const unsigned unroll4 = 4;
+    dim3 dimGrid4 = getGridDimensions(N/unroll4, 1, 1, block_size4_x, block_size4_y, block_size4_z);
+    dim3 dimBlock4( block_size4_x, block_size4_y, block_size4_z );
+
+    std::cout << "Launching saxpy CUB kernels" << std::endl;
+    std::cout << "Grid 1 [" << dimGrid.x << "," << dimGrid.y << "," << dimGrid.z << "]" << std::endl;
+    std::cout << "Grid 2 [" << dimGrid2.x << "," << dimGrid2.y << "," << dimGrid2.z << "]" << std::endl;
+    std::cout << "Grid 4 [" << dimGrid4.x << "," << dimGrid4.y << "," << dimGrid4.z << "]" << std::endl;
+
+    std::cout << "Block 1 [" << dimBlock.x << "," << dimBlock.y << "," << dimBlock.z << "]" << std::endl;
+    std::cout << "Block 2 [" << dimBlock2.x << "," << dimBlock2.y << "," << dimBlock2.z << "]" << std::endl;
+    std::cout << "Block 4 [" << dimBlock4.x << "," << dimBlock4.y << "," << dimBlock4.z << "]" << std::endl;
+
+    for (int i = 0; i < repetitions; i++) {
+        saxpy_gpu_cub<T, 128,       1><<<dimGrid, dimBlock>>>(px, py, pz, N, alpha);
+        err = cudaGetLastError();
+        saxpy_gpu_cub<T, 128, unroll2><<<dimGrid2, dimBlock2>>>(px, py, pz, N, alpha);
+        err = cudaGetLastError();
+        saxpy_gpu_cub<T, 128, unroll4><<<dimGrid4, dimBlock4>>>(px, py, pz, N, alpha);
+        err = cudaGetLastError();
+    }
+    std::cout << std::endl;
+
+    err = cudaDeviceSynchronize();
+}
+
+void run_saxpy_cub(const double* px,
+                 const double* py,
+                 double* pz,
+                 unsigned N,
+                 double alpha,
+                 unsigned repetitions) {
+    using T = double;
+
+    cuda::error err;
+    unsigned block_size_x = 128;
+    unsigned block_size_y = 1;
+    unsigned block_size_z = 1;
+    dim3 dimGrid = getGridDimensions(N, 1, 1, block_size_x, block_size_y, block_size_z);
+    dim3 dimBlock( block_size_x, block_size_y, block_size_z );
+
+    unsigned block_size2_x = 128;
+    unsigned block_size2_y = 1;
+    unsigned block_size2_z = 1;
+    const unsigned unroll2 = 2;
+    dim3 dimGrid2  = getGridDimensions(N/unroll2, 1, 1, block_size2_x, block_size2_y, block_size2_z);
+    dim3 dimBlock2( block_size2_x, block_size2_y, block_size2_z );
+
+    unsigned block_size4_x = 128;
+    unsigned block_size4_y = 1;
+    unsigned block_size4_z = 1;
+    const unsigned unroll4 = 4;
+    dim3 dimGrid4 = getGridDimensions(N/unroll4, 1, 1, block_size4_x, block_size4_y, block_size4_z);
+    dim3 dimBlock4( block_size4_x, block_size4_y, block_size4_z );
+
+    std::cout << "Launching saxpy CUB kernels" << std::endl;
+    std::cout << "Grid 1 [" << dimGrid.x << "," << dimGrid.y << "," << dimGrid.z << "]" << std::endl;
+    std::cout << "Grid 2 [" << dimGrid2.x << "," << dimGrid2.y << "," << dimGrid2.z << "]" << std::endl;
+    std::cout << "Grid 4 [" << dimGrid4.x << "," << dimGrid4.y << "," << dimGrid4.z << "]" << std::endl;
+
+    std::cout << "Block 1 [" << dimBlock.x << "," << dimBlock.y << "," << dimBlock.z << "]" << std::endl;
+    std::cout << "Block 2 [" << dimBlock2.x << "," << dimBlock2.y << "," << dimBlock2.z << "]" << std::endl;
+    std::cout << "Block 4 [" << dimBlock4.x << "," << dimBlock4.y << "," << dimBlock4.z << "]" << std::endl;
+
+    for (int i = 0; i < repetitions; i++) {
+        saxpy_gpu_cub<T, 128,       1><<<dimGrid, dimBlock>>>(px, py, pz, N, alpha);
+        err = cudaGetLastError();
+        saxpy_gpu_cub<T, 128, unroll2><<<dimGrid2, dimBlock2>>>(px, py, pz, N, alpha);
+        err = cudaGetLastError();
+        saxpy_gpu_cub<T, 128, unroll4><<<dimGrid4, dimBlock4>>>(px, py, pz, N, alpha);
+        err = cudaGetLastError();
+    }
+    std::cout << std::endl;
+
+    err = cudaDeviceSynchronize();
 }
