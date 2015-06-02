@@ -19,7 +19,7 @@ void saxpy_c(cuda::device& gpu, unsigned N, unsigned repetitions) {
         T *px, *py, *pz;
         err = cudaMallocManaged((void**)&px, N * sizeof(T));
         err = cudaMallocManaged((void**)&py, N * sizeof(T));
-        err = cudaMalloc((void**)&pz, N * sizeof(T));
+        err = cudaMallocManaged((void**)&pz, N * sizeof(T));
         T alpha = 0.8;
 
         gpu.getMemInfo(free, total);
@@ -37,9 +37,11 @@ void saxpy_c(cuda::device& gpu, unsigned N, unsigned repetitions) {
 
         run_saxpy_c(px, py, pz, N, alpha, repetitions);
 
+
         err = cudaFree(px);
         err = cudaFree(py);
         err = cudaFree(pz);
+
 
     } catch(cuda::cuda_exception error) {
         std::cout << error.what() << std::endl;
@@ -132,7 +134,7 @@ void saxpy_cub(cuda::device& gpu, unsigned N, unsigned repetitions) {
         T *px, *py, *pz;
         err = cudaMallocManaged((void**)&px, N * sizeof(T));
         err = cudaMallocManaged((void**)&py, N * sizeof(T));
-        err = cudaMalloc((void**)&pz, N * sizeof(T));
+        err = cudaMallocManaged((void**)&pz, N * sizeof(T));
         T alpha = 0.8;
 
         gpu.getMemInfo(free, total);
@@ -161,7 +163,7 @@ void saxpy_cub(cuda::device& gpu, unsigned N, unsigned repetitions) {
 
 int main() {
     unsigned N = 100 * 1024 * 1024;
-    unsigned rep = 100;
+    unsigned rep = 1;
     cuda::device gpu;
 
     gpu.list_devices();

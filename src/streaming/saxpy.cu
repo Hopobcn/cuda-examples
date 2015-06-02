@@ -5,6 +5,7 @@
 #include <util/grid_stride.hpp>
 #include <util/cuda_grid_config.hpp>
 #include <util/cuda_error.hpp>
+#include <util/cuda_init.hpp>
 #include <cublas_v2.h>
 #include <cub/cub/cub.cuh>
 
@@ -12,7 +13,6 @@
 using cuda::grid_stride_range;
 using cuda::util::getGridDimensions;
 using cuda::util::lang::range;
-
 
 template <typename T>
 __global__
@@ -140,15 +140,15 @@ void saxpy_gpu_cub(const T* x, const T* y, T* z, unsigned N, T alpha) {
     } storage_smem;
 
     T x_reg[unroll], y_reg[unroll], z_reg[unroll];
-    BlockLoad(storage_smem.load_x).Load(x, x_reg);
-    BlockLoad(storage_smem.load_y).Load(y, y_reg);
+    BlockLoad(storage_smem.load_x).Load(x, x_reg, N);
+    BlockLoad(storage_smem.load_y).Load(y, y_reg, N);
 
     __syncthreads();
 
     for (int i = 0; i < unroll; i++)
         z_reg[i] = alpha * x_reg[i] + y_reg[i];
 
-    BlockStore(storage_smem.store).Store(z, z_reg);
+    BlockStore(storage_smem.store).Store(z, z_reg, N);
 };
 
 /*
@@ -182,9 +182,9 @@ void test_cub_2d(const T* x, const T* y, T* z, unsigned N, T alpha) {
 };
  */
 
-void run_saxpy_c(const float* px,
-                 const float* py,
-                       float* pz,
+void run_saxpy_c(float* px,
+                 float* py,
+                 float* pz,
                  unsigned N,
                  float alpha,
                  unsigned repetitions) {
@@ -220,9 +220,15 @@ void run_saxpy_c(const float* px,
     std::cout << "Block 2 [" << dimBlock2.x << "," << dimBlock2.y << "," << dimBlock2.z << "]" << std::endl;
     std::cout << "Block 4 [" << dimBlock4.x << "," << dimBlock4.y << "," << dimBlock4.z << "]" << std::endl;
 
-    for (int i = 0; i < repetitions; i++) {
+    for (unsigned i = 0; i < repetitions; i++) {
+        init<T><<<dimGrid, dimBlock>>>(px, N);
+        init<T><<<dimGrid, dimBlock>>>(py, N);
         saxpy_gpu_c_array<T><<<dimGrid, dimBlock>>>(px, py, pz, N, alpha);
-        err = cudaGetLastError();
+        err = cudaDeviceSynchronize();
+
+        for (unsigned j = 0; j < N; j++)
+            assert(pz[j] == alpha * px[j] + py[j]);
+
         saxpy_gpu_cpp_array<T><<<dimGrid, dimBlock>>>(px, py, pz, N, alpha);
         err = cudaGetLastError();
         saxpy_gpu_c_vector_unroll<T, unroll2><<<dimGrid2, dimBlock2>>>(px, py, pz, N, alpha);
@@ -243,7 +249,13 @@ void run_saxpy_c(const double* px,
                  unsigned repetitions) {
     using T = double;
 
+
     cuda::error err;
+
+    T* aux;
+    err = cudaMallocManaged((void**)&aux, N * sizeof(T));
+
+
     unsigned block_size_x = 128;
     unsigned block_size_y = 1;
     unsigned block_size_z = 1;
@@ -286,6 +298,7 @@ void run_saxpy_c(const double* px,
     std::cout << std::endl;
 
     err = cudaDeviceSynchronize();
+    err = cudaFree(aux);
 }
 
 void run_saxpy_cpp(const cuda::vector<float>& x,

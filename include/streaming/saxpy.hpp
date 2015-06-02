@@ -3,9 +3,9 @@
 #include <util/cuda_vector.hpp>
 
 
-void run_saxpy_c(const float* px,
-                 const float* py,
-                       float* pz,
+void run_saxpy_c(float* px,
+                 float* py,
+                 float* pz,
                  unsigned N,
                  float alpha,
                  unsigned repetitions);
