@@ -36,6 +36,9 @@ void saxpy_gpu_naive_rangebasedloop(const T *x,
                                     unsigned N, T alpha) {
     for (auto i : grid_stride_range<unsigned>(0, N) ) {
         z[i] = alpha * x[i] + y[i];
+
+        printf("blockIdx.x %d - blockDim.x %d - threadIdx.x %d = %d\n",
+               blockIdx.x, blockDim.x, threadIdx.x, i);
     }
 }
 
@@ -207,10 +210,6 @@ void run_saxpy_c(const T* px,
                  unsigned repetitions) {
     cuda::error err;
 
-    T* aux;
-    err = cudaMallocManaged((void**)&aux, N * sizeof(T));
-
-
     unsigned block_size_x = 128;
     unsigned block_size_y = 1;
     unsigned block_size_z = 1;
@@ -253,7 +252,6 @@ void run_saxpy_c(const T* px,
     std::cout << std::endl;
 
     err = cudaDeviceSynchronize();
-    err = cudaFree(aux);
 }
 
 template <typename T>
