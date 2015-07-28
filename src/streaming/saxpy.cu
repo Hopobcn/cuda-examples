@@ -6,6 +6,7 @@
 #include <util/grid_stride.hpp>
 #include <util/cuda_grid_config.hpp>
 #include <util/cuda_error.hpp>
+#include <util/cuda_init.hpp>
 #include <cublas_v2.h>
 #include <cub/cub/cub.cuh>
 
@@ -13,7 +14,6 @@
 using cuda::grid_stride_range;
 using cuda::util::getGridDimensions;
 using cuda::util::lang::range;
-
 
 template <typename T>
 __global__
@@ -153,15 +153,15 @@ void saxpy_gpu_cub(const T* x,
     } storage_smem;
 
     T x_reg[unroll], y_reg[unroll], z_reg[unroll];
-    BlockLoad(storage_smem.load_x).Load(x, x_reg);
-    BlockLoad(storage_smem.load_y).Load(y, y_reg);
+    BlockLoad(storage_smem.load_x).Load(x, x_reg, N);
+    BlockLoad(storage_smem.load_y).Load(y, y_reg, N);
 
     __syncthreads();
 
     for (int i = 0; i < unroll; i++)
         z_reg[i] = alpha * x_reg[i] + y_reg[i];
 
-    BlockStore(storage_smem.store).Store(z, z_reg);
+    BlockStore(storage_smem.store).Store(z, z_reg, N);
 };
 
 /*
@@ -206,6 +206,11 @@ void run_saxpy_c(const T* px,
                  T alpha,
                  unsigned repetitions) {
     cuda::error err;
+
+    T* aux;
+    err = cudaMallocManaged((void**)&aux, N * sizeof(T));
+
+
     unsigned block_size_x = 128;
     unsigned block_size_y = 1;
     unsigned block_size_z = 1;
@@ -248,6 +253,7 @@ void run_saxpy_c(const T* px,
     std::cout << std::endl;
 
     err = cudaDeviceSynchronize();
+    err = cudaFree(aux);
 }
 
 template <typename T>
