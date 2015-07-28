@@ -18,9 +18,9 @@ int main() {
 
     gpu.list_devices();
 
-    //cuda_cpp11_testing(gpu, N);
+    cuda_cpp11_testing(gpu, N);
 
-    launch_saxpy(gpu, N, rep);
+    //launch_saxpy(gpu, N, rep);
     //launch_vecadd(gpu, N, rep);
 
     return 0;

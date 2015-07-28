@@ -13,24 +13,41 @@ using cuda::grid_stride_range;
 using cuda::util::getGridDimensions;
 using cuda::util::lang::range;
 
+    
+template<typename T>
+__global__ 
+void memset_kernel(T * x, T value, int count) {
+    for (int i = threadIdx.x + blockIdx.x * blockDim.x;
+             i < count;
+             i += blockDim.x * gridDim.x) {
+        x[i] = value;
+    }
+}
+
+template <typename T, typename Function>
+__global__
+void streaming_lambda_by_ref(const T* x, const T* y, T* z, unsigned N, T alpha, Function& lambda) {
+    for (int i = threadIdx.x + blockIdx.x * blockDim.x;
+             i < count;
+             i += blockDim.x * gridDim.x) {
+        z[i] = lambda(x[i],y[i],alpha);
+    }
+}
 
 template <typename T>
 __global__
-void streaming(const T* x, const T* y, T* z, unsigned N, T alpha) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-    printf("blockIdx.x %d - blockDim.x %d - threadIdx.x %d = %d\n",
-           blockIdx.x, blockDim.x, threadIdx.x, i);
-    /*
+void streaming_local_lambda(const T* x, const T* y, T* z, unsigned N, T alpha) {
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < N;
          i += blockDim.x * gridDim.x) {
-        //auto lambda = [&](T x, T y, T alpha) { return alpha * x + y; };
+        auto local_lambda = [&](T x, T y, T alpha) { return alpha * x + y; };
 
-        //z[i] = lambda(x[i],y[i],alpha)
+        z[i] = local_lambda(x[i],y[i],alpha);
 
-
-    }*/
+        if (i == 0)
+        printf("z[%d] = alpha * x[%d] + y[%d] \t %f = %f * %f + %f\n",
+           i, i, i, z[i], alpha, x[i], y[i]);
+    }
 }
 
 template <typename T>
@@ -50,9 +67,6 @@ void lambda_test(cuda::device& gpu, unsigned N) {
         err = cudaMalloc((void**)&py, N * sizeof(T));
         err = cudaMalloc((void**)&pz, N * sizeof(T));
         T alpha = 0.8;
-
-        err = cudaMemset(px, 3, N * sizeof(T));
-        err = cudaMemset(py, 2, N * sizeof(T));
 
         gpu.getMemInfo(free, total);
         cout << "Free mem: " << free/(1024*1024) << " / " << total/(1024*1024) << " MB" << endl;
@@ -75,7 +89,16 @@ void lambda_test(cuda::device& gpu, unsigned N) {
         std::cout << "Launching streaming test" << std::endl;
         std::cout << "Grid [" << dimGrid.x << "," << dimGrid.y << "," << dimGrid.z << "]" << std::endl;
 
-        streaming<T><<<dimGrid, dimBlock>>>(px, py, pz, N, alpha);
+        memset_kernel<<<dimGrid, dimBlock>>>(px, (T)3.0, N);
+        memset_kernel<<<dimGrid, dimBlock>>>(py, (T)2.0, N);
+
+        streaming_local_lambda<<<dimGrid, dimBlock>>>(px, py, pz, N, alpha);
+
+        auto pass_by_ref_lambda = [] __device__ (T x, T y, T alpha) { return alpha * x + y; };
+        auto pass_by_val_lambda = [=] (T x, T y, T alpha) { return alpha * x + y; };
+
+        streaming_lambda_by_ref<<<dimGrid, dimBlock>>>(px, py, pz, N, alpha, pass_by_ref_lambda);
+
 
         err = cudaFree(px);
         err = cudaFree(py);
